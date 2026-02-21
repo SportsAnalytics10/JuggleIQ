@@ -24,58 +24,61 @@ class VideoProcessor:
              [0, 0, 1, 0],
              [0, 0, 0, 1]], dtype=np.float32)
 
-        # Higher velocity noise = reacts faster to direction changes
         self.kf.processNoiseCov = np.eye(4, dtype=np.float32) * 0.03
         self.kf.processNoiseCov[2, 2] = 5.0
         self.kf.processNoiseCov[3, 3] = 5.0
         self.kf.measurementNoiseCov = np.eye(2, dtype=np.float32) * 0.5
 
-        self.kalman_initialized     = False
+        self.kalman_initialized          = False
         self.kalman_predicted_this_frame = False
-        self.lost_frames            = 0
-        self.MAX_LOST               = 12
-        self.last_radius            = 20
+        self.lost_frames                 = 0
+        self.MAX_LOST                    = 12
+        self.last_radius                 = 20
 
-        # Exponential smoothing state
         self.smooth_cx = None
         self.smooth_cy = None
-        self.ALPHA     = 0.55  # 0 = very smooth, 1 = no smoothing
+        self.ALPHA     = 0.55
+
+        # FIX 1: default fps so analyze_frame never crashes
+        self.fps = 30.0
+
+        # Trajectory trail
+        self.ball_history  = []
+        self.trail_len     = 25
+
+        # Jump rejection threshold (pixels)
+        self.MAX_JUMP_PX   = 150
 
     # ------------------------------------------------------------------
     # Kalman helpers
     # ------------------------------------------------------------------
 
     def _init_kalman(self, cx, cy, h_frame):
-        """
-        Initialize Kalman only if position is in a reasonable area.
-        Rejects false positives in top 15% and bottom 10% of frame.
-        """
         if cy < h_frame * 0.15:
-            return  # likely sky / lights — skip
+            return
         if cy > h_frame * 0.90:
-            return  # likely ground — skip
-
+            return
         self.kf.statePre  = np.array([[cx], [cy], [0], [0]], dtype=np.float32)
         self.kf.statePost = np.array([[cx], [cy], [0], [0]], dtype=np.float32)
         self.kalman_initialized = True
         self.lost_frames = 0
 
     def _kalman_predict(self):
-        """
-        Safe Kalman predict — always returns plain Python ints.
-        Flattens the result so it works across all numpy/OpenCV versions.
-        """
+        """Always safe — flattens 2D output before reading."""
         pred = self.kf.predict()
         pred = np.array(pred).flatten()
         return int(pred[0]), int(pred[1])
 
+    def _kalman_state(self):
+        """Safely read statePost without predicting."""
+        flat = np.array(self.kf.statePost).flatten()
+        return int(flat[0]), int(flat[1])
+
     def _kalman_correct(self, cx, cy):
-        """Safe Kalman correct."""
         meas = np.array([[np.float32(cx)], [np.float32(cy)]], dtype=np.float32)
         self.kf.correct(meas)
 
     def _smooth(self, cx, cy):
-        """Exponential moving average to reduce circle jitter."""
         if self.smooth_cx is None:
             self.smooth_cx = cx
             self.smooth_cy = cy
@@ -85,19 +88,32 @@ class VideoProcessor:
         return self.smooth_cx, self.smooth_cy
 
     # ------------------------------------------------------------------
+    # Jump rejection helper
+    # ------------------------------------------------------------------
+
+    def _is_valid_jump(self, cx, cy):
+        """
+        Returns True if (cx, cy) is within MAX_JUMP_PX of the
+        last valid point in history. Always True if no history yet.
+        """
+        # Find last valid point
+        for p in reversed(self.ball_history):
+            if p["x"] is not None and p["y"] is not None:
+                last_x, last_y = p["x"], p["y"]
+                dist = np.sqrt((cx - last_x) ** 2 + (cy - last_y) ** 2)
+                return dist <= self.MAX_JUMP_PX  # True = valid, False = crazy jump
+        return True  # no history yet — always accept first point
+
+    # ------------------------------------------------------------------
     # YOLO detection
     # ------------------------------------------------------------------
 
     def _yolo_candidates(self, frame):
-        """
-        Run YOLO and return filtered ball candidates.
-        Each candidate: (score, cx, cy, radius)
-        """
         h_frame, w_frame = frame.shape[:2]
         results = self.model.predict(
             frame, conf=self.conf, classes=[32], verbose=False
         )
-        boxes = results[0].boxes
+        boxes      = results[0].boxes
         candidates = []
 
         if boxes is None or len(boxes) == 0:
@@ -111,22 +127,17 @@ class VideoProcessor:
             h     = y2 - y1
             score = float(b.conf[0].cpu().numpy())
 
-            # --- Spatial rejection ---
-            # Reject top 15% of frame (sky, lights, crowd)
             if cy < h_frame * 0.15:
                 continue
-            # Reject bottom 10% of frame (ground, shoes)
             if cy > h_frame * 0.90:
                 continue
 
-            # --- Size filters ---
             min_size = 0.02 * min(h_frame, w_frame)
             if w < min_size or h < min_size:
                 continue
             if w > 0.45 * w_frame or h > 0.45 * h_frame:
                 continue
 
-            # --- Shape filter: ball must be roughly circular ---
             aspect = w / h if h > 0 else 0
             if not (0.55 < aspect < 1.8):
                 continue
@@ -143,15 +154,14 @@ class VideoProcessor:
     def detect_ball(self, frame):
         """
         Returns (cx, cy, radius, status)
-        'detected'  → YOLO confirmed        → draw green
-        'predicted' → Kalman filling gap    → draw yellow
-        None        → completely lost       → draw nothing
+        'detected'  → YOLO confirmed
+        'predicted' → Kalman filling gap
+        None        → completely lost
         """
-        h_frame = frame.shape[0]
+        h_frame    = frame.shape[0]
         candidates = self._yolo_candidates(frame)
         self.kalman_predicted_this_frame = False
 
-        # ── YOLO found the ball ──────────────────────────────────────
         if candidates:
             score, cx, cy, r = max(candidates, key=lambda t: t[0])
             cx, cy = int(cx), int(cy)
@@ -159,37 +169,77 @@ class VideoProcessor:
             if not self.kalman_initialized:
                 self._init_kalman(cx, cy, h_frame)
             else:
-                # predict → correct (standard Kalman cycle)
                 self._kalman_predict()
                 self.kalman_predicted_this_frame = True
                 self._kalman_correct(cx, cy)
 
-            self.lost_frames  = 0
-            self.last_radius  = int(r)
+            self.lost_frames = 0
+            self.last_radius = int(r)
             cx, cy = self._smooth(cx, cy)
             return cx, cy, int(r), "detected"
 
-        # ── YOLO missed ──────────────────────────────────────────────
         if not self.kalman_initialized:
             return None, None, None, None
 
         self.lost_frames += 1
 
         if self.lost_frames > self.MAX_LOST:
-            # Lost too long — full reset so stale state doesn't persist
             self.reset_tracking()
             return None, None, None, None
 
-        # Predict only if we haven't already this frame
         if not self.kalman_predicted_this_frame:
             cx, cy = self._kalman_predict()
             self.kalman_predicted_this_frame = True
         else:
-            flat   = np.array(self.kf.statePost).flatten()
-            cx, cy = int(flat[0]), int(flat[1])
+            cx, cy = self._kalman_state()
 
         cx, cy = self._smooth(cx, cy)
         return cx, cy, int(self.last_radius), "predicted"
+
+    # ------------------------------------------------------------------
+    # Trajectory trail  (Milestone C)
+    # ------------------------------------------------------------------
+
+    def _draw_trail(self, frame):
+        """
+        Draw last N valid positions as a fading trajectory trail.
+        Orange dots = detected, Red dots = predicted, White line = path
+        """
+        if len(self.ball_history) < 2:
+            return
+
+        recent = [p for p in self.ball_history if p["x"] is not None]
+        if len(recent) < 2:
+            return
+
+        # White connecting polyline drawn first (behind dots)
+        pts = np.array(
+            [(p["x"], p["y"]) for p in recent], dtype=np.int32
+        ).reshape((-1, 1, 2))
+        cv2.polylines(frame, [pts], isClosed=False, color=(255, 255, 255), thickness=2)
+
+        # Fading dots — older = smaller, newer = bigger
+        total = len(recent)
+        for i, p in enumerate(recent):
+            alpha  = (i + 1) / total
+            radius = max(2, int(6 * alpha))
+            color  = (0, 165, 255) if p["status"] == "detected" else (0, 0, 255)
+            cv2.circle(frame, (p["x"], p["y"]), radius, color, -1)
+
+    # ------------------------------------------------------------------
+    # Metrics helper — detected points only
+    # ------------------------------------------------------------------
+
+    def get_detected_history(self):
+        """
+        Returns only 'detected' points from ball_history.
+        Use this for computing touches, peaks, and any metrics.
+        Predicted points are excluded to prevent false readings.
+        """
+        return [
+            p for p in self.ball_history
+            if p["status"] == "detected" and p["x"] is not None
+        ]
 
     # ------------------------------------------------------------------
     # Frame rendering
@@ -202,30 +252,53 @@ class VideoProcessor:
         )
 
         cx, cy, r, status = self.detect_ball(frame)
+        t = frame_idx / self.fps
+
+        # ── Jump rejection before appending ─────────────────────────
+        if cx is not None and cy is not None:
+            if self._is_valid_jump(cx, cy):
+                # Valid point — append with real position
+                self.ball_history.append({
+                    "t":      t,
+                    "x":      cx,
+                    "y":      cy,
+                    "status": status
+                })
+            else:
+                # Crazy jump detected — append None so trail gaps correctly
+                self.ball_history.append({
+                    "t":      t,
+                    "x":      None,
+                    "y":      None,
+                    "status": None
+                })
+        else:
+            # Ball completely lost
+            self.ball_history.append({
+                "t":      t,
+                "x":      None,
+                "y":      None,
+                "status": None
+            })
+
+        # Cap history to trail_len — prevents memory leak
+        if len(self.ball_history) > self.trail_len:
+            self.ball_history.pop(0)
+
+        # Draw trail behind ball circle
+        self._draw_trail(frame)
 
         if status == "detected":
-            # Solid green circle — YOLO confirmed
-            # cv2.circle(frame, (cx, cy), r, (0, 255, 0), 2)
-            # cv2.circle(frame, (cx, cy), 4, (0, 255, 0), -1)
-            # cv2.putText(frame, "BALL", (cx + 10, cy - 10),
-            # cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
-
-            cv2.circle(frame, (cx, cy), r, (0, 165, 255), 4)   # outer circle thick
-            cv2.circle(frame, (cx, cy), 8, (0, 165, 255), -1)  # center dot
+            cv2.circle(frame, (cx, cy), r, (0, 165, 255), 4)
+            cv2.circle(frame, (cx, cy), 8, (0, 165, 255), -1)
             cv2.putText(frame, "BALL", (cx + 10, cy - 10),
-            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 165, 255), 2)
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 165, 255), 2)
 
         elif status == "predicted":
-            # Yellow circle — Kalman filling in gap
-            # cv2.circle(frame, (cx, cy), r, (0, 255, 255), 2)
-            # cv2.circle(frame, (cx, cy), 4, (0, 255, 255), -1)
-            # cv2.putText(frame, "BALL (pred)", (cx + 10, cy - 10),
-            # cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
-
-            cv2.circle(frame, (cx, cy), r, (0, 0, 255), 4)     # outer circle thick
-            cv2.circle(frame, (cx, cy), 8, (0, 0, 255), -1)    # center dot
+            cv2.circle(frame, (cx, cy), r, (0, 0, 255), 4)
+            cv2.circle(frame, (cx, cy), 8, (0, 0, 255), -1)
             cv2.putText(frame, "BALL (pred)", (cx + 10, cy - 10),
-            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
 
         return frame
 
@@ -234,7 +307,6 @@ class VideoProcessor:
     # ------------------------------------------------------------------
 
     def process_video(self, input_path, output_path):
-        # Always reset tracker at start of each video
         self.reset_tracking()
 
         input_path  = Path(input_path)
@@ -248,6 +320,9 @@ class VideoProcessor:
         fps    = cap.get(cv2.CAP_PROP_FPS) or 30.0
         width  = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+
+        # Set real fps before loop starts
+        self.fps = fps
         print(f"Video Info -> FPS: {fps:.2f}, Size: {width}x{height}")
 
         fourcc = cv2.VideoWriter_fourcc(*"mp4v")
@@ -294,7 +369,7 @@ if __name__ == "__main__":
         raise SystemExit(0)
 
     for video_path in videos:
-        out_path = output_dir / f"{video_path.stem}_B_ball_annotated.mp4"
+        out_path = output_dir / f"{video_path.stem}_C_trail_annotated.mp4"
         print(f"\nProcessing: {video_path.name}")
         try:
             vp.process_video(video_path, out_path)
