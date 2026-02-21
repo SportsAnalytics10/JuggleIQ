@@ -39,15 +39,28 @@ class VideoProcessor:
         self.smooth_cy = None
         self.ALPHA     = 0.55
 
-        # FIX 1: default fps so analyze_frame never crashes
-        self.fps = 30.0
+        self.fps         = 30.0   # safe default
+        self.MAX_JUMP_PX = 150
 
-        # Trajectory trail
-        self.ball_history  = []
-        self.trail_len     = 25
+        # Trail history (capped at trail_len)
+        self.ball_history          = []
+        self.trail_len             = 25
 
-        # Jump rejection threshold (pixels)
-        self.MAX_JUMP_PX   = 150
+        # Detected-only history (for metrics — never mixed with predicted)
+        self.ball_history_detected = []
+
+        # --------------------------------------------------
+        # Milestone E: touch detection state
+        # --------------------------------------------------
+        self.touches            = []      # list of touch dicts
+        self.touch_flash_frames = 6       # frames to show "TOUCH #k" flash
+        self.last_touch_t       = -1e9    # timestamp of last registered touch
+
+        self.min_touch_interval = 0.18    # seconds — prevents double count
+        self.vy_min_flip        = 250.0   # px/sec — min velocity for real flip
+
+        self.prev_det  = None             # previous detected point
+        self.prev_vy   = None             # previous vertical velocity
 
     # ------------------------------------------------------------------
     # Kalman helpers
@@ -88,21 +101,114 @@ class VideoProcessor:
         return self.smooth_cx, self.smooth_cy
 
     # ------------------------------------------------------------------
-    # Jump rejection helper
+    # Jump rejection
     # ------------------------------------------------------------------
 
     def _is_valid_jump(self, cx, cy):
         """
-        Returns True if (cx, cy) is within MAX_JUMP_PX of the
-        last valid point in history. Always True if no history yet.
+        Returns True if (cx, cy) is within MAX_JUMP_PX of
+        the last valid point. Always True if no history yet.
         """
-        # Find last valid point
         for p in reversed(self.ball_history):
             if p["x"] is not None and p["y"] is not None:
-                last_x, last_y = p["x"], p["y"]
-                dist = np.sqrt((cx - last_x) ** 2 + (cy - last_y) ** 2)
-                return dist <= self.MAX_JUMP_PX  # True = valid, False = crazy jump
-        return True  # no history yet — always accept first point
+                dist = np.sqrt((cx - p["x"]) ** 2 + (cy - p["y"]) ** 2)
+                return dist <= self.MAX_JUMP_PX
+        return True
+
+    # ------------------------------------------------------------------
+    # Ball history append
+    # ------------------------------------------------------------------
+
+    def _append_ball_point(self, t, frame_idx, cx, cy, status):
+        """
+        Append to both trail history and detected-only history.
+        Jump rejection applied before appending.
+        """
+        if cx is not None and cy is not None:
+            if self._is_valid_jump(cx, cy):
+                # Append to trail history
+                self.ball_history.append({
+                    "t":      t,
+                    "x":      cx,
+                    "y":      cy,
+                    "status": status
+                })
+                # Detected-only history — metrics use this exclusively
+                if status == "detected":
+                    self.ball_history_detected.append({
+                        "t":         t,
+                        "frame_idx": frame_idx,   # needed for touch flash timing
+                        "x":         cx,
+                        "y":         cy
+                    })
+            else:
+                # Crazy jump — append None so trail breaks cleanly
+                self.ball_history.append({
+                    "t": t, "x": None, "y": None, "status": None
+                })
+        else:
+            # Ball completely lost
+            self.ball_history.append({
+                "t": t, "x": None, "y": None, "status": None
+            })
+
+        # Cap trail history to trail_len — prevents memory leak
+        if len(self.ball_history) > self.trail_len:
+            self.ball_history.pop(0)
+
+    # ------------------------------------------------------------------
+    # Milestone E: touch detection
+    # ------------------------------------------------------------------
+
+    def _update_touch_detection(self, det_point):
+        """
+        Detect a touch using vertical velocity sign flip.
+        Uses detected-only points so predicted frames can't cause false touches.
+
+        Logic:
+          - Compute vy = (y1 - y0) / dt  (pixels per second)
+          - In OpenCV: y increases downward
+            so falling ball  → vy > 0
+            and rising ball  → vy < 0
+          - Touch = moment ball goes from falling (vy > 0) to rising (vy < 0)
+            i.e. ball just hit foot/knee and bounced back up
+        """
+        if self.prev_det is None:
+            self.prev_det = det_point
+            return
+
+        t0, y0 = self.prev_det["t"], self.prev_det["y"]
+        t1, y1 = det_point["t"],     det_point["y"]
+        dt = t1 - t0
+
+        if dt <= 1e-6:
+            return
+
+        vy = (y1 - y0) / dt  # pixels per second
+
+        if self.prev_vy is not None:
+            sign_flip    = (self.prev_vy > 0) and (vy < 0)
+            strong_enough = (
+                abs(self.prev_vy) > self.vy_min_flip or
+                abs(vy)           > self.vy_min_flip
+            )
+            far_enough = (t1 - self.last_touch_t) >= self.min_touch_interval
+
+            if sign_flip and strong_enough and far_enough:
+                touch = {
+                    "frame_idx": det_point["frame_idx"],
+                    "t":         det_point["t"],
+                    "x":         det_point["x"],
+                    "y":         det_point["y"]
+                }
+                self.touches.append(touch)
+                self.last_touch_t = t1
+                print(f"  → Touch #{len(self.touches)} at t={t1:.2f}s "
+                      f"frame={det_point['frame_idx']} "
+                      f"vy_prev={self.prev_vy:.1f} vy={vy:.1f}")
+
+        self.prev_vy  = vy
+        self.prev_det = det_point
 
     # ------------------------------------------------------------------
     # YOLO detection
@@ -182,7 +288,6 @@ class VideoProcessor:
             return None, None, None, None
 
         self.lost_frames += 1
-
         if self.lost_frames > self.MAX_LOST:
             self.reset_tracking()
             return None, None, None, None
@@ -197,13 +302,13 @@ class VideoProcessor:
         return cx, cy, int(self.last_radius), "predicted"
 
     # ------------------------------------------------------------------
-    # Trajectory trail  (Milestone C)
+    # Trajectory trail drawing
     # ------------------------------------------------------------------
 
     def _draw_trail(self, frame):
         """
         Draw last N valid positions as a fading trajectory trail.
-        Orange dots = detected, Red dots = predicted, White line = path
+        Orange = detected, Red = predicted, White line = path
         """
         if len(self.ball_history) < 2:
             return
@@ -212,34 +317,20 @@ class VideoProcessor:
         if len(recent) < 2:
             return
 
-        # White connecting polyline drawn first (behind dots)
+        # White polyline behind dots
         pts = np.array(
             [(p["x"], p["y"]) for p in recent], dtype=np.int32
         ).reshape((-1, 1, 2))
-        cv2.polylines(frame, [pts], isClosed=False, color=(255, 255, 255), thickness=2)
+        cv2.polylines(frame, [pts], isClosed=False,
+                      color=(255, 255, 255), thickness=2)
 
-        # Fading dots — older = smaller, newer = bigger
+        # Fading dots — older smaller, newer bigger
         total = len(recent)
         for i, p in enumerate(recent):
             alpha  = (i + 1) / total
             radius = max(2, int(6 * alpha))
             color  = (0, 165, 255) if p["status"] == "detected" else (0, 0, 255)
             cv2.circle(frame, (p["x"], p["y"]), radius, color, -1)
-
-    # ------------------------------------------------------------------
-    # Metrics helper — detected points only
-    # ------------------------------------------------------------------
-
-    def get_detected_history(self):
-        """
-        Returns only 'detected' points from ball_history.
-        Use this for computing touches, peaks, and any metrics.
-        Predicted points are excluded to prevent false readings.
-        """
-        return [
-            p for p in self.ball_history
-            if p["status"] == "detected" and p["x"] is not None
-        ]
 
     # ------------------------------------------------------------------
     # Frame rendering
@@ -254,40 +345,18 @@ class VideoProcessor:
         cx, cy, r, status = self.detect_ball(frame)
         t = frame_idx / self.fps
 
-        # ── Jump rejection before appending ─────────────────────────
-        if cx is not None and cy is not None:
-            if self._is_valid_jump(cx, cy):
-                # Valid point — append with real position
-                self.ball_history.append({
-                    "t":      t,
-                    "x":      cx,
-                    "y":      cy,
-                    "status": status
-                })
-            else:
-                # Crazy jump detected — append None so trail gaps correctly
-                self.ball_history.append({
-                    "t":      t,
-                    "x":      None,
-                    "y":      None,
-                    "status": None
-                })
-        else:
-            # Ball completely lost
-            self.ball_history.append({
-                "t":      t,
-                "x":      None,
-                "y":      None,
-                "status": None
-            })
+        # Append to history (jump rejection inside)
+        self._append_ball_point(t, frame_idx, cx, cy, status)
 
-        # Cap history to trail_len — prevents memory leak
-        if len(self.ball_history) > self.trail_len:
-            self.ball_history.pop(0)
+        # Milestone E: update touch detection on detected frames only
+        if status == "detected" and len(self.ball_history_detected) > 0:
+            det_point = self.ball_history_detected[-1]
+            self._update_touch_detection(det_point)
 
-        # Draw trail behind ball circle
+        # Draw trail behind ball
         self._draw_trail(frame)
 
+        # Draw ball circle
         if status == "detected":
             cv2.circle(frame, (cx, cy), r, (0, 165, 255), 4)
             cv2.circle(frame, (cx, cy), 8, (0, 165, 255), -1)
@@ -300,7 +369,40 @@ class VideoProcessor:
             cv2.putText(frame, "BALL (pred)", (cx + 10, cy - 10),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
 
+        # --------------------------------------------------
+        # Milestone E: touch overlay
+        # --------------------------------------------------
+        touch_count = len(self.touches)
+
+        # Persistent touch counter top-left
+        cv2.putText(
+            frame, f"Touches: {touch_count}",
+            (30, 100), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 255), 2
+        )
+
+        # Flash "TOUCH #k" near ball for touch_flash_frames after each touch
+        if self.touches:
+            last_touch = self.touches[-1]
+            frames_since = frame_idx - last_touch["frame_idx"]
+            if frames_since <= self.touch_flash_frames:
+                tx, ty = last_touch["x"], last_touch["y"]
+                k = touch_count
+                cv2.circle(frame, (tx, ty), 30, (255, 255, 255), 3)
+                cv2.putText(
+                    frame, f"TOUCH #{k}",
+                    (tx + 15, ty - 15),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255, 255, 255), 2
+                )
+
         return frame
+
+    # ------------------------------------------------------------------
+    # Metrics helper — detected points only
+    # ------------------------------------------------------------------
+
+    def get_detected_history(self):
+        """Use this for computing touches, peaks, and any metrics."""
+        return self.ball_history_detected
 
     # ------------------------------------------------------------------
     # Video I/O
@@ -321,7 +423,6 @@ class VideoProcessor:
         width  = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
-        # Set real fps before loop starts
         self.fps = fps
         print(f"Video Info -> FPS: {fps:.2f}, Size: {width}x{height}")
 
@@ -344,6 +445,17 @@ class VideoProcessor:
         duration = time.time() - start_time
         print(f"Processed {frame_idx} frames in {duration:.2f}s")
         print(f"Saved → {output_path.resolve()}")
+
+        # Milestone E: print summary
+        print(f"\n{'='*40}")
+        print(f"Touch count : {len(self.touches)}")
+        print(f"Best streak : {len(self.touches)}")  # Milestone F will refine this
+        if self.touches:
+            print("First 5 touches:")
+            for touch in self.touches[:5]:
+                print(f"  Touch #{self.touches.index(touch)+1} "
+                      f"at t={touch['t']:.2f}s  frame={touch['frame_idx']}")
+        print(f"{'='*40}\n")
 
 
 # ----------------------------------------------------------------------
@@ -369,7 +481,7 @@ if __name__ == "__main__":
         raise SystemExit(0)
 
     for video_path in videos:
-        out_path = output_dir / f"{video_path.stem}_C_trail_annotated.mp4"
+        out_path = output_dir / f"{video_path.stem}_E_touch_annotated.mp4"
         print(f"\nProcessing: {video_path.name}")
         try:
             vp.process_video(video_path, out_path)
