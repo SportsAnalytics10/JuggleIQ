@@ -26,16 +26,87 @@ body {
 }
 
 .app {
+  position: relative;
   max-width: 1000px;
   margin: 0 auto;
   padding: 1.5rem;
   min-height: 100vh;
+  z-index: 1;
+}
+
+/* Background graphics */
+.app-bg {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  overflow: hidden;
+}
+
+.app-bg-gradient {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse 80% 50% at 50% -20%, rgba(34, 211, 238, 0.12), transparent),
+              radial-gradient(ellipse 60% 40% at 100% 80%, rgba(168, 85, 247, 0.08), transparent);
+}
+
+.app-bg-grid {
+  position: absolute;
+  inset: 0;
+  background-image: linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+                    linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+  background-size: 48px 48px;
+}
+
+.app-bg-blob {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  opacity: 0.2;
+}
+
+.app-bg-blob-1 {
+  width: 320px;
+  height: 320px;
+  background: var(--accent);
+  top: -120px;
+  right: -80px;
+}
+
+.app-bg-blob-2 {
+  width: 280px;
+  height: 280px;
+  background: var(--purple);
+  bottom: -100px;
+  left: -60px;
 }
 
 .header {
+  position: relative;
   text-align: center;
   padding: 2rem 0;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.header-graphic {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 0.75rem;
+}
+
+.header-svg {
+  width: 100px;
+  height: 40px;
+  color: var(--accent);
+}
+
+.header h1 {
+  opacity: 0;
+  transform: translateY(-8px);
+}
+
+.header .tagline {
+  opacity: 0;
 }
 
 .header h1 {
@@ -69,13 +140,37 @@ body {
   font-weight: 500;
 }
 
+.nav a {
+  padding: 0.35rem 0.75rem;
+  border-radius: 999px;
+  transition: background 0.2s, color 0.2s;
+}
+
 .nav a:hover {
-  text-decoration: underline;
+  background: rgba(34, 211, 238, 0.12);
+  text-decoration: none;
 }
 
 .section {
   padding: 2.5rem 0;
   scroll-margin-top: 1rem;
+}
+
+.section-title {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 1.5rem;
+  margin: 0 0 0.75rem;
+  color: var(--text);
+}
+
+.section-title-bar {
+  display: inline-block;
+  width: 4px;
+  height: 1.4em;
+  border-radius: 2px;
+  background: linear-gradient(180deg, var(--accent), var(--purple));
 }
 
 .section h2 {
@@ -108,6 +203,13 @@ body {
   border-radius: var(--radius);
   overflow: hidden;
   box-shadow: var(--shadow);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.sample-card:hover {
+  border-color: rgba(34, 211, 238, 0.25);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.3);
 }
 
 .sample-video {
@@ -127,15 +229,52 @@ body {
 .upload-section .upload-box {
   background: var(--bg-card);
   border-radius: var(--radius);
-  padding: 1.5rem;
-  border: 1px dashed rgba(255, 255, 255, 0.15);
+  padding: 1.75rem;
+  border: 2px dashed rgba(34, 211, 238, 0.25);
+  text-align: center;
+  transition: border-color 0.2s, background 0.2s;
+}
+
+.upload-section .upload-box:hover {
+  border-color: rgba(34, 211, 238, 0.4);
+  background: rgba(30, 41, 59, 0.8);
+}
+
+.upload-icon {
+  color: var(--accent);
+  margin-bottom: 1rem;
+}
+
+.upload-icon svg {
+  width: 48px;
+  height: 48px;
+  margin: 0 auto;
+  display: block;
 }
 
 .file-input {
-  display: block;
-  margin-bottom: 0.75rem;
+  position: absolute;
+  width: 0.1px;
+  height: 0.1px;
+  opacity: 0;
+  overflow: hidden;
+  z-index: -1;
+}
+
+.file-label {
+  display: inline-block;
+  padding: 0.5rem 1rem;
   font-size: 0.9rem;
-  color: var(--text);
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  cursor: pointer;
+  margin-bottom: 0.75rem;
+  transition: background 0.2s, color 0.2s;
+}
+
+.file-label:hover {
+  background: rgba(34, 211, 238, 0.1);
 }
 
 .file-name {
@@ -197,6 +336,30 @@ body {
 
 .results-section {
   border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* Anime.js: start hidden and slightly offset so entrance animation runs cleanly */
+.results-section .results-actions {
+  opacity: 0;
+  transform: translateY(12px);
+}
+.results-section .metrics-grid .metric-card {
+  opacity: 0;
+  transform: translateY(14px);
+}
+.results-section .coaching-block,
+.results-section .knee-tip {
+  opacity: 0;
+  transform: translateY(10px);
+}
+.results-section .chart-card {
+  opacity: 0;
+  transform: translateY(16px);
+}
+.results-section .touches-table-wrap,
+.results-section .figma-make-block {
+  opacity: 0;
+  transform: translateY(12px);
 }
 
 .results-actions {
@@ -403,6 +566,20 @@ body {
   border-radius: var(--radius);
   padding: 1rem;
   border: 1px solid rgba(255, 255, 255, 0.06);
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
+}
+
+.metric-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--accent), var(--purple));
+  opacity: 0.7;
 }
 
 .metric-label {
@@ -452,6 +629,7 @@ body {
   border-radius: var(--radius);
   padding: 1.25rem;
   border: 1px solid rgba(255, 255, 255, 0.06);
+  box-shadow: 0 2px 16px rgba(0, 0, 0, 0.2);
 }
 
 .chart-card h4 {
@@ -505,11 +683,21 @@ body {
 }
 
 .footer {
+  position: relative;
   text-align: center;
   padding: 2rem 0;
   color: var(--text-muted);
   font-size: 0.85rem;
   border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.footer-line {
+  width: 60px;
+  height: 3px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, var(--accent), var(--purple));
+  margin: 0 auto 1.25rem;
+  opacity: 0.8;
 }
 
 @media (max-width: 600px) {

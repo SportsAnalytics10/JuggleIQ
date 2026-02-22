@@ -1,4 +1,5 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
+import { animate, stagger } from "animejs";
 import {
   XAxis,
   YAxis,
@@ -41,6 +42,39 @@ function App() {
   const [error, setError] = useState(null);
   const [result, setResult] = useState(null);
   const resultsRef = useRef(null);
+  const headerRef = useRef(null);
+
+  // Anime.js: subtle header entrance on load (https://animejs.com/)
+  useEffect(() => {
+    if (!headerRef.current) return;
+    const h1 = headerRef.current.querySelector("h1");
+    const tag = headerRef.current.querySelector(".tagline");
+    if (h1) animate(h1, { opacity: 1, translateY: 0, duration: 600, ease: "outExpo" });
+    if (tag) animate(tag, { opacity: 1, duration: 500, delay: 150, ease: "outExpo" });
+  }, []);
+
+  // Anime.js: subtle entrance animations when results load (https://animejs.com/)
+  useEffect(() => {
+    if (!result) return;
+    const el = resultsRef.current;
+    if (!el) return;
+    const run = () => {
+      const actions = el.querySelector(".results-actions");
+      const cards = el.querySelectorAll(".metric-card");
+      const coaching = el.querySelectorAll(".coaching-block, .knee-tip");
+      const charts = el.querySelectorAll(".chart-card");
+      const table = el.querySelector(".touches-table-wrap");
+      const figma = el.querySelector(".figma-make-block");
+      if (actions) animate(actions, { opacity: 1, translateY: 0, duration: 400, ease: "outExpo" });
+      if (cards.length) animate(cards, { opacity: 1, translateY: 0, duration: 450, delay: stagger(70, { start: 80 }), ease: "outExpo" });
+      if (coaching.length) animate(coaching, { opacity: 1, translateY: 0, duration: 450, delay: 280, ease: "outExpo" });
+      if (charts.length) animate(charts, { opacity: 1, translateY: 0, duration: 500, delay: stagger(120, { start: 350 }), ease: "outExpo" });
+      if (table) animate(table, { opacity: 1, translateY: 0, duration: 450, delay: 500, ease: "outExpo" });
+      if (figma) animate(figma, { opacity: 1, translateY: 0, duration: 500, delay: 550, ease: "outExpo" });
+    };
+    const t = requestAnimationFrame(() => requestAnimationFrame(run));
+    return () => cancelAnimationFrame(t);
+  }, [result]);
 
   const handleFileChange = (e) => {
     const f = e.target.files?.[0];
@@ -117,7 +151,28 @@ function App() {
 
   return (
     <div className="app">
-      <header className="header">
+      <div className="app-bg" aria-hidden="true">
+        <div className="app-bg-gradient" />
+        <div className="app-bg-grid" />
+        <div className="app-bg-blob app-bg-blob-1" />
+        <div className="app-bg-blob app-bg-blob-2" />
+      </div>
+
+      <header className="header" ref={headerRef}>
+        <div className="header-graphic">
+          <svg viewBox="0 0 120 48" fill="none" xmlns="http://www.w3.org/2000/svg" className="header-svg">
+            <circle cx="24" cy="24" r="10" stroke="url(#headerGrad)" strokeWidth="2" fill="none" opacity="0.8" />
+            <circle cx="60" cy="24" r="10" stroke="url(#headerGrad)" strokeWidth="2" fill="none" opacity="0.5" />
+            <circle cx="96" cy="24" r="10" stroke="url(#headerGrad)" strokeWidth="2" fill="none" opacity="0.8" />
+            <path d="M34 24h22M66 24h22" stroke="url(#headerGrad)" strokeWidth="1.5" strokeLinecap="round" opacity="0.4" />
+            <defs>
+              <linearGradient id="headerGrad" x1="0" y1="0" x2="120" y2="48" gradientUnits="userSpaceOnUse">
+                <stop stopColor="var(--accent)" />
+                <stop offset="1" stopColor="var(--purple)" />
+              </linearGradient>
+            </defs>
+          </svg>
+        </div>
         <h1>JuggleIQ</h1>
         <p className="tagline">CV-powered juggling coach — upload, analyze, improve.</p>
       </header>
@@ -132,7 +187,7 @@ function App() {
       </nav>
 
       <section id="samples" className="section">
-        <h2>Sample videos</h2>
+        <h2 className="section-title"><span className="section-title-bar" />Sample videos</h2>
         <p className="section-desc">Videos from the drills folder. Upload your own in the section below to analyze.</p>
         <div className="sample-grid">
           {SAMPLE_VIDEOS.map((s) => (
@@ -145,9 +200,17 @@ function App() {
       </section>
 
       <section id="upload" className="section upload-section">
-        <h2>Upload & analyze</h2>
+        <h2 className="section-title"><span className="section-title-bar" />Upload & analyze</h2>
         <div className="upload-box">
-          <input type="file" accept=".mp4,.mov,.avi,.mkv,.webm" onChange={handleFileChange} className="file-input" />
+          <div className="upload-icon">
+            <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M24 8v32M8 24h32" stroke="currentColor" strokeWidth="2" strokeLinecap="round" opacity="0.6" />
+              <path d="M24 16l-8 8 8 8 8-8-8-8z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" opacity="0.9" />
+              <circle cx="24" cy="24" r="18" stroke="currentColor" strokeWidth="1.5" fill="none" opacity="0.4" />
+            </svg>
+          </div>
+          <input type="file" accept=".mp4,.mov,.avi,.mkv,.webm" onChange={handleFileChange} className="file-input" id="file-upload" />
+          <label htmlFor="file-upload" className="file-label">Choose video file</label>
           <p className="file-name">{file ? file.name : "No file chosen"}</p>
           <button onClick={handleAnalyze} disabled={loading} className="btn btn-primary">
             {loading ? "Analyzing…" : "Analyze"}
@@ -158,7 +221,7 @@ function App() {
       </section>
 
       <section id="results" className="section results-section" ref={resultsRef}>
-        <h2>Results</h2>
+        <h2 className="section-title"><span className="section-title-bar" />Results</h2>
         {!result && !loading && <p className="muted">Upload a video and click Analyze to see results here.</p>}
 
         {result && (
@@ -302,7 +365,7 @@ function App() {
       </section>
 
       <section className="section links-section">
-        <h2>Resources</h2>
+        <h2 className="section-title"><span className="section-title-bar" />Resources</h2>
         <ul className="resource-list">
           {YOUTUBE_LINKS.map((l) => (
             <li key={l.url}>
@@ -320,6 +383,7 @@ function App() {
       </section>
 
       <footer className="footer">
+        <div className="footer-line" />
         <p>JuggleIQ — Hacklytics 2026</p>
       </footer>
     </div>
