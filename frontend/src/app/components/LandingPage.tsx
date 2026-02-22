@@ -1,3 +1,6 @@
+import React from "react";
+
+
 import { useNavigate } from "react-router";
 import { Upload, Play } from "lucide-react";
 import { Button } from "./ui/button";
@@ -8,6 +11,7 @@ export function LandingPage() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const isPausedRef = useRef(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
 
   const handleUploadClick = useCallback(() => {
     fileInputRef.current?.click();
@@ -123,33 +127,52 @@ export function LandingPage() {
             }}
           />
           
-          {/* Single video frame */}
+          {/* Single video frame - main hero video */}
           <div
-            className="relative w-[800px] h-[280px] rounded-[12px] overflow-hidden"
+            className="relative w-full max-w-[800px] aspect-video rounded-[12px] overflow-hidden cursor-pointer group"
             style={{ backgroundColor: 'rgba(255,255,255,0.06)' }}
+            onClickCapture={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              const v = videoRef.current;
+              if (!v) return;
+              v.paused ? v.play() : v.pause();
+            }}
           >
-            {/* Film grain texture overlay */}
+            <video
+              ref={videoRef}
+              src="/VideoProject2.MP4"
+              className="absolute inset-0 w-full h-full object-cover"
+              playsInline
+              muted={true}
+              loop={false}
+              controls
+            />
+            {/* Film grain overlay (optional) */}
             <div 
-              className="absolute inset-0"
+              className="absolute inset-0 pointer-events-none"
               style={{
                 backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 400 400' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.15'/%3E%3C/svg%3E")`,
                 mixBlendMode: 'overlay',
               }}
             />
-            
-            {/* Grayscale placeholder with mock soccer content */}
-            <div className="absolute inset-0 flex items-center justify-center" style={{ filter: 'grayscale(1)' }}>
-              <div className="w-32 h-32 rounded-full border-4 border-white/20 flex items-center justify-center">
-                <Play className="w-12 h-12 text-white/40 ml-1" />
+            {/* Play overlay when paused - click to play */}
+            <div 
+              className="absolute inset-0 flex items-center justify-center bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"
+              aria-hidden
+            >
+              <div className="w-20 h-20 rounded-full border-4 border-white/40 flex items-center justify-center bg-white/10">
+                <Play className="w-10 h-10 text-white ml-1" />
               </div>
             </div>
           </div>
         </div>
+    
         
         {/* Caption */}
         <div className="text-center mt-3">
           <p className="text-[12px] italic" style={{ color: 'rgba(255,255,255,0.25)' }}>
-            Pelé, 1958
+            Pelé, 84
           </p>
         </div>
       </section>
