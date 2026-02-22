@@ -82,15 +82,17 @@ function App() {
 
   const handleDownloadJson = () => {
     if (!result) return;
-    const blob = new Blob([JSON.stringify(result, null, 2)], { type: "application/json" });
+    const payload = {
+      ...result,
+      annotated_video_full_url: getAnnotatedVideoUrl(result.annotated_video_url) || null,
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
     a.download = `juggleiq-session-${result.job_id || "session"}.json`;
     a.click();
     URL.revokeObjectURL(a.href);
   };
-
-  const videoUrl = result ? getAnnotatedVideoUrl(result.annotated_video_url) : null;
 
   // Chart data from result
   const footData = result
@@ -165,15 +167,6 @@ function App() {
               <button onClick={handleDownloadJson} className="btn btn-secondary">
                 Download session JSON
               </button>
-            </div>
-
-            <div className="result-video-block">
-              <h3>Annotated video</h3>
-              {videoUrl ? (
-                <video controls src={videoUrl} className="result-video" />
-              ) : (
-                <p className="muted">Video URL not available.</p>
-              )}
             </div>
 
             <div className="metrics-grid">
@@ -281,6 +274,29 @@ function App() {
                 </table>
               </div>
             )}
+
+            <div className="figma-make-block">
+              <h3>Figma Make — Animate your analysis</h3>
+              <p className="figma-make-desc">
+                Skip the in-app video and build a <strong>unique animated dashboard</strong> in Figma Make. Use your session JSON as the dataset and bring the numbers to life.
+              </p>
+              <a href={FIGMA_LINK} target="_blank" rel="noreferrer" className="btn btn-primary figma-cta">
+                Open Figma Make dashboard →
+              </a>
+              <div className="figma-ideas">
+                <h4>Animation ideas from your API response</h4>
+                <ul>
+                  <li><strong>Tap a touch</strong> → Reveal foot (L/R), time, and coordinates with a quick highlight or pulse.</li>
+                  <li><strong>Touch timeline</strong> → Staggered reveal of <code>touches[]</code> one by one (e.g. dots or steps) with labels.</li>
+                  <li><strong>Skill score gauge</strong> → Animate a needle or bar from 0 to <code>skill_score</code> when the frame loads.</li>
+                  <li><strong>Foot usage donut</strong> → Build the donut from <code>left_foot</code> / <code>right_foot</code> with a short draw animation.</li>
+                  <li><strong>Rhythm chart</strong> → Animate <code>intervals[]</code> as a line or bars that draw in sequence.</li>
+                  <li><strong>Knee stiffness badge</strong> → Show <code>stiffness_label</code> + <code>stiffness_tip</code> with a subtle entrance animation.</li>
+                  <li><strong>Coaching tips</strong> → Cycle or reveal <code>coaching_tips[]</code> with type-on or fade-in.</li>
+                </ul>
+                <p className="figma-hint">Download the session JSON above and import it as your Figma Make dataset (&lt;5MB).</p>
+              </div>
+            </div>
           </>
         )}
       </section>
@@ -297,7 +313,7 @@ function App() {
           ))}
           <li>
             <a href={FIGMA_LINK} target="_blank" rel="noreferrer">
-              Figma dashboard
+              Figma Make dashboard
             </a>
           </li>
         </ul>

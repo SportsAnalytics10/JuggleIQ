@@ -105,7 +105,8 @@ def download_annotated_video(job_id: str):
     return FileResponse(
         str(output_path),
         media_type="video/mp4",
-        filename=f"juggleiq_{job_id}_annotated.mp4"
+        filename=f"juggleiq_{job_id}_annotated.mp4",
+        content_disposition_type="inline",
     )
 
 

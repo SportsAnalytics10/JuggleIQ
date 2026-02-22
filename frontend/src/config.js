@@ -1,6 +1,6 @@
 // Kaggle/ngrok API base — no trailing slash
 export const API_BASE =
-  import.meta.env.VITE_API_BASE || "https://lakisha-deltaic-conception.ngrok-free.dev";
+  import.meta.env.VITE_API_BASE || "https://semicomatose-atlas-endocrinous.ngrok-free.dev";
 
 // Build full URL for annotated video (API returns path like /download/{job_id})
 export function getAnnotatedVideoUrl(annotatedPath) {
