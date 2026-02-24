@@ -1,0 +1,87 @@
+{
+  "touch_count": 5,
+  "left_foot": 4,
+  "right_foot": 1,
+  "unknown": 0,
+  "left_pct": 80,
+  "right_pct": 20,
+  "best_streak": 5,
+  "all_streaks": [
+    5
+  ],
+  "skill_score": 55.4,
+  "coaching_tips": [
+    "Good effort! Try to chain more consecutive touches",
+    "Your legs are very straight — bend your knees more for better balance and ball control"
+  ],
+  "score_breakdown": {
+    "touch_score": 10,
+    "rhythm_score": 90.5,
+    "peak_score": 70.8,
+    "drift_score": 91.2,
+    "avg_peak_px": 502.8,
+    "avg_drift_px": 26.2
+  },
+  "rhythm_score": 90.5,
+  "avg_peak_px": 502.8,
+  "avg_drift_px": 26.2,
+  "intervals": [
+    2.294,
+    1.762,
+    1.962,
+    1.995
+  ],
+  "knee_feedback": {
+    "avg_left_knee_angle": 174,
+    "avg_right_knee_angle": 176.8,
+    "avg_knee_angle": 175.4,
+    "stiffness_label": "very_stiff",
+    "stiffness_tip": "Your legs are very straight — bend your knees more for better balance and ball control"
+  },
+  "touches": [
+    {
+      "touch_num": 1,
+      "foot": "L",
+      "t": 0.9,
+      "frame_idx": 27,
+      "x": 615,
+      "y": 1024
+    },
+    {
+      "touch_num": 2,
+      "foot": "R",
+      "t": 3.19,
+      "frame_idx": 96,
+      "x": 623,
+      "y": 1271
+    },
+    {
+      "touch_num": 3,
+      "foot": "L",
+      "t": 4.95,
+      "frame_idx": 149,
+      "x": 635,
+      "y": 998
+    },
+    {
+      "touch_num": 4,
+      "foot": "L",
+      "t": 6.92,
+      "frame_idx": 208,
+      "x": 587,
+      "y": 970
+    },
+    {
+      "touch_num": 5,
+      "foot": "L",
+      "t": 8.91,
+      "frame_idx": 268,
+      "x": 624,
+      "y": 1016
+    }
+  ],
+  "job_id": "b9ee5b9c",
+  "original_filename": "IMG_5241.MOV",
+  "annotated_video_url": "/download/b9ee5b9c",
+  "annotated_video_full_url": "https://semicomatose-atlas-endocrinous.ngrok-free.dev/download/b9ee5b9c"
+}
