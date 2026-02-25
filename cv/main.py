@@ -7,7 +7,7 @@ from fastapi.responses import FileResponse
 import shutil
 import uuid
 from pathlib import Path
-from video_processor import VideoProcessor
+from .video_processor import VideoProcessor
 
 app = FastAPI(title="JuggleIQ API")
 
@@ -22,8 +22,9 @@ print("Loading models — this takes ~30 seconds...")
 vp = VideoProcessor(conf=0.45, model_name="yolov8m.pt")
 print("Models ready!")
 
-WORK_DIR = Path("/kaggle/working/videos")
-WORK_DIR.mkdir(exist_ok=True)
+BASE_DIR = Path(__file__).resolve().parent
+WORK_DIR = BASE_DIR / "videos"
+WORK_DIR.mkdir(parents=True, exist_ok=True)
 
 
 @app.get("/health")
