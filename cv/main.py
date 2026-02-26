@@ -7,7 +7,7 @@ from fastapi.responses import FileResponse
 import shutil
 import uuid
 from pathlib import Path
-from .video_processor import VideoProcessor
+from video_processor import VideoProcessor
 
 app = FastAPI(title="JuggleIQ API")
 
