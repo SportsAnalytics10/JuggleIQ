@@ -268,3 +268,7 @@ Session JSON from **Download session JSON** is under 5MB and can be imported as 
 - **JuggleIQ** — Hacklytics 2026  
 - CV: YOLO (Ultralytics), MediaPipe  
 - Frontend: React, Vite, Recharts, [Anime.js](https://animejs.com/)
+
+---
+
+## 👥 Team
