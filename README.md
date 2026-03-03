@@ -272,3 +272,4 @@ Session JSON from **Download session JSON** is under 5MB and can be imported as 
 ---
 
 ## 👥 Team
+Gabriel Dos Santos — MediaPipe integration
