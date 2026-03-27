@@ -18,6 +18,11 @@ Built for **Hacklytics 2026**. Users upload a short juggling video; the system d
 
 ---
 
+## 🎥 System Demo Video
+[![Watch the demo](https://youtu.be/s3JzzzPyIjI?si=CCOd1BR1LCa6Pn4s)
+
+---
+
 ## Full System Architecture
 
 ```
