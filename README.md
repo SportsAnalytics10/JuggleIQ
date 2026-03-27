@@ -22,7 +22,7 @@ Built for **Hacklytics 2026**. Users upload a short juggling video; the system d
 
 Watch the system in action:
 
-[![Watch the demo](https://img.youtube.com/vi/uZSs3ksrZ98/maxresdefault.jpg)](https://youtu.be/uZSs3ksrZ98)
+[![Watch the demo](https://img.youtube.com/vi/s3JzzzPyIjI/maxresdefault.jpg)](https://youtu.be/s3JzzzPyIjI)
 
 ---
 
